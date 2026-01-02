@@ -7,13 +7,12 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
     """
     Institutional Valuation Logic
     
-    INPUT ASSUMPTIONS:
+    INPUT ASSUMPTIONS (all from SEC):
     - revenue: in MILLIONS ($M)
     - ebit: in MILLIONS ($M)
     - debt: in MILLIONS ($M)
     - cash: in MILLIONS ($M)
-    - shares: in MILLIONS (M shares)
-    - All other metrics: in MILLIONS
+    - shares: in MILLIONS (M shares) - CORRECTED
     
     OUTPUT:
     - Fair Value Per Share: in DOLLARS ($)
@@ -23,7 +22,7 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
     # --- 0. INPUT EXTRACTION & VALIDATION ---
     rev = inputs.get('revenue', 0)
     ebit = inputs.get('ebit', 0)
-    shares_m = inputs.get('shares', 1)  # Already in millions!
+    shares_m = inputs.get('shares', 1)  # In millions
     current_price = inputs.get('current_price', 0)
     debt = inputs.get('debt', 0)
     cash = inputs.get('cash', 0)
@@ -38,8 +37,7 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
             "ev": 0,
             "pv_terminal": 0,
             "current_price": current_price,
-            "ddm_price": 0,
-            "error": "Invalid input data"
+            "ddm_price": 0
         }
     
     tax_rate = inputs.get('tax_rate', 0.21)
@@ -68,18 +66,16 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
         
         projections.append({
             'Year': 2026 + i,
-            'Revenue($M)': current_rev,
-            'EBIT($M)': year_ebit,
-            'NOPAT($M)': year_nopat,
-            'FCFF($M)': fcff,
-            'PV_FCFF($M)': pv_fcff
+            'Revenue': current_rev,
+            'FCFF': fcff,
+            'PV_FCFF': pv_fcff
         })
     
     df = pd.DataFrame(projections)
 
     # --- 2. TERMINAL VALUE (STAGE 2) ---
     stable_wacc = max(wacc, t_growth + 0.01)
-    last_fcff = projections[-1]['FCFF($M)']
+    last_fcff = projections[-1]['FCFF']
     
     if stable_wacc > t_growth:
         terminal_value = (last_fcff * (1 + t_growth)) / (stable_wacc - t_growth)
@@ -88,10 +84,9 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
         pv_terminal = 0
     
     # --- 3. ENTERPRISE VALUE (in $M) ---
-    ev_m = df['PV_FCFF($M)'].sum() + pv_terminal
+    ev_m = df['PV_FCFF'].sum() + pv_terminal
     
     # --- 4. EQUITY VALUE BRIDGE (in $M) ---
-    # Equity Value = Enterprise Value - Debt + Cash
     equity_val_m = ev_m - debt + cash
     
     # --- 5. FAIR VALUE PER SHARE (in $) ---
@@ -99,15 +94,14 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
     price_dcf = equity_val_m / shares_m if shares_m > 0 else 0
     
     # --- 6. RELATIVE VALUATION (P/E method) ---
-    # EPS = Net Income ($M) / Shares (M shares) = $ per share
     eps = net_income / shares_m if shares_m > 0 else 0
-    price_pe = eps * 15 if eps > 0 else 0  # Conservative 15x P/E multiple
+    price_pe = eps * 15 if eps > 0 else 0
 
     return {
         "df": df,
         "dcf_price": price_dcf,
         "pe_price": price_pe,
-        "ev": ev_m,          # In $M
+        "ev": ev_m,
         "pv_terminal": pv_terminal,
         "current_price": current_price,
         "ddm_price": 0
@@ -115,10 +109,7 @@ def run_multi_valuation(inputs, growth_rate, wacc, t_growth, market_data):
 
 
 def calculate_sensitivity(inputs, growth_rate, wacc_range, g_range):
-    """
-    Generates Enterprise Value sensitivity matrix.
-    All values in MILLIONS ($M).
-    """
+    """Generates Enterprise Value sensitivity matrix in Billions"""
     matrix = np.zeros((len(wacc_range), len(g_range)))
     market_data = {'rf': 0.045, 'erp': 0.055}
     
@@ -128,8 +119,6 @@ def calculate_sensitivity(inputs, growth_rate, wacc_range, g_range):
                 matrix[i, j] = np.nan
             else:
                 res = run_multi_valuation(inputs, growth_rate, w, g, market_data)
-                # Display in Billions for readability
-                ev_billions = res['ev'] / 1000 if res['ev'] > 0 else np.nan
-                matrix[i, j] = ev_billions
+                matrix[i, j] = res['ev'] / 1000 if res['ev'] > 0 else np.nan
                 
     return matrix
