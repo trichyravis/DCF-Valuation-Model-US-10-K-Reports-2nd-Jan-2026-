@@ -1,1 +1,19 @@
+[theme]
+# Institutional Branding: Oxford Blue and Gold
+primaryColor = "#FFD700"          # Gold (Accents and Buttons)
+backgroundColor = "#FFFFFF"       # White (Main Workspace)
+secondaryBackgroundColor = "#F0F2F6" # Light Gray (Sidebar/Widgets)
+textColor = "#002147"             # Oxford Blue (Primary Text)
+font = "serif"                    # Matches "The Mountain Path" academic style
 
+[server]
+# Optimized for Cloud Deployment
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+# Disables file watcher to prevent system resource errors in Colab/Cloud
+fileWatcherType = "none" 
+
+[browser]
+# Enhances performance by disabling usage tracking
+gatherUsageStats = false
