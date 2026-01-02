@@ -1,66 +1,42 @@
 
-import pandas as pd
-import streamlit as st
 import requests
-import yfinance as yf
-import time
+import streamlit as st
 
 class SECDataFetcher:
     def __init__(self, ticker):
         self.ticker = ticker.upper()
-        # SEC requires a specific User-Agent format: Company Name/Email
+        # SEC requires an identifying User-Agent with an email
         self.headers = {
-            'User-Agent': 'Mountain Path Valuation (research@mountainpath.edu)',
-            'Accept-Encoding': 'gzip, deflate',
-            'Host': 'data.sec.gov'
+            'User-Agent': 'Mountain Path Valuation research@mountainpath.edu',
+            'Accept-Encoding': 'gzip, deflate'
         }
 
-    @st.cache_data(ttl=3600)
+    @st.cache_data(ttl=3600)  # Prevents repeated API calls during the same session
     def get_valuation_inputs(_self):
         try:
-            # 1. Map Ticker to CIK
-            ticker_map = requests.get("https://www.sec.gov/files/company_tickers.json", 
-                                     headers={'User-Agent': 'MPV/1.0'}).json()
-            cik = next((str(item['cik_str']).zfill(10) for item in ticker_map.values() 
-                       if item['ticker'] == _self.ticker), None)
+            # Step 1: Get CIK
+            ticker_url = "https://www.sec.gov/files/company_tickers.json"
+            response = requests.get(ticker_url, headers=_self.headers)
             
-            if not cik: return None
-
-            # 2. Fetch Audited Facts
-            facts = requests.get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json", 
-                                headers=_self.headers).json()
+            # CHECK: If response is empty, return None instead of crashing
+            if not response.text.strip():
+                st.error("SEC API returned an empty response. You may be rate-limited.")
+                return None
+                
+            ticker_map = response.json()
+            # ... (rest of your CIK mapping logic)
             
-            def get_val(tag, taxonomy='us-gaap'):
-                try:
-                    data = facts['facts'][taxonomy][tag]['units']['USD']
-                    return sorted(data, key=lambda x: x['end'])[-1]['val']
-                except: return 0
+            # Step 2: Fetch Company Facts
+            facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+            facts_response = requests.get(facts_url, headers=_self.headers)
+            
+            # SAFETY: Ensure the body is not empty before parsing JSON
+            if facts_response.status_code == 200 and facts_response.text.strip():
+                return facts_response.json()
+            else:
+                st.warning(f"No data found for {_self.ticker} in SEC archives.")
+                return None
 
-            # 3. Live Price Fallback
-            stock = yf.Ticker(_self.ticker)
-            try:
-                current_price = stock.fast_info['last_price']
-            except:
-                hist = stock.history(period="1d")
-                current_price = hist['Close'].iloc[-1] if not hist.empty else 0
-
-            return {
-                "name": _self.ticker,
-                "ticker": _self.ticker,
-                "current_price": current_price,
-                "revenue": get_val('Revenues') / 1e6 or get_val('RevenueFromContractWithCustomerExcludingCostReportedAmount') / 1e6,
-                "ebit": get_val('OperatingIncomeLoss') / 1e6,
-                "net_income": get_val('NetIncomeLoss') / 1e6,
-                "depr": get_val('DepreciationDepletionAndAmortization') / 1e6,
-                "capex": get_val('PaymentsToAcquirePropertyPlantAndEquipment') / 1e6,
-                "debt": (get_val('LongTermDebtNoncurrent') + get_val('DebtCurrent')) / 1e6,
-                "cash": get_val('CashAndCashEquivalentsAtCarryingValue') / 1e6,
-                "interest_exp": get_val('InterestExpense') / 1e6,
-                "dividends": get_val('PaymentsOfDividends') / 1e6,
-                "shares": get_val('EntityCommonStockSharesOutstanding', 'dei') or 1e6,
-                "tax_rate": 0.21,
-                "beta": 1.1
-            }
-        except Exception as e:
-            st.error(f"SEC Fetch Error: {e}")
+        except requests.exceptions.JSONDecodeError:
+            st.error("Failed to parse SEC data. The API may be unavailable.")
             return None
