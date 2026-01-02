@@ -20,7 +20,7 @@ class SECDataFetcher:
                 response.raise_for_status()
                 ticker_map = response.json()
             except requests.exceptions.RequestException as e:
-                st.error(f"Failed to fetch ticker mapping from SEC: {e}")
+                st.error(f"Failed to fetch ticker mapping: {e}")
                 return None
             
             # Step 2: Find CIK for this ticker
@@ -31,7 +31,7 @@ class SECDataFetcher:
                     break
             
             if not cik or cik == '0000000000':
-                st.error(f"Ticker {self.ticker} not found in SEC database")
+                st.error(f"Ticker {self.ticker} not found")
                 return None
             
             # Step 3: Fetch company facts from SEC
@@ -41,11 +41,8 @@ class SECDataFetcher:
                 facts_response = requests.get(facts_url, headers=headers, timeout=10)
                 facts_response.raise_for_status()
                 facts = facts_response.json()
-            except requests.exceptions.RequestException as e:
-                st.error(f"Failed to fetch SEC data for {self.ticker}: {e}")
-                return None
-            except json.JSONDecodeError as e:
-                st.error(f"Invalid response from SEC API: {e}")
+            except Exception as e:
+                st.error(f"Failed to fetch SEC data: {e}")
                 return None
             
             # Step 4: Extract financial values
@@ -59,42 +56,57 @@ class SECDataFetcher:
                     return 0
             
             def get_shares():
-                """Get shares from DEI taxonomy - returns in actual shares (not millions)"""
+                """Get shares from DEI - returns in actual count, we'll convert to millions"""
                 try:
-                    # Try to get from DEI taxonomy
                     dei_data = facts.get('facts', {}).get('dei', {}).get('EntityCommonStockSharesOutstanding', {}).get('units', {})
                     
-                    # Look for 'pure' unit (dimensionless - just shares count)
+                    # Try 'pure' unit first
                     shares_val = dei_data.get('pure', [])
                     if shares_val:
-                        return sorted(shares_val, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                        val = sorted(shares_val, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                        return val if val > 0 else 0
                     
-                    # If not found, try other units
+                    # Try other units
                     for unit_type, unit_data in dei_data.items():
                         if unit_data:
-                            return sorted(unit_data, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                            val = sorted(unit_data, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                            if val > 0:
+                                return val
                     
                     return 0
                 except:
                     return 0
             
             # Step 5: Get current market price
+            current_price = 0
             try:
+                # Try yfinance with longer timeout
                 stock = yf.Ticker(self.ticker)
-                hist = stock.history(period="1d")
-                current_price = float(hist['Close'].iloc[-1]) if not hist.empty else 0
+                info = stock.info
+                current_price = info.get('currentPrice') or info.get('regularMarketPrice') or 0
+                
+                # Fallback to history if price not in info
+                if current_price == 0:
+                    hist = stock.history(period="1d")
+                    if not hist.empty:
+                        current_price = float(hist['Close'].iloc[-1])
             except:
                 current_price = 0
             
-            # Step 6: Fetch and normalize all values
-            shares_absolute = get_shares()  # This is in actual shares (e.g., 2.5 billion)
-            shares_millions = shares_absolute / 1e6 if shares_absolute > 0 else 1e6  # Convert to millions
+            # Step 6: Get and convert shares
+            shares_absolute = get_shares()  # In actual shares
             
-            # Return all financial metrics with shares in MILLIONS
+            # Convert to millions
+            if shares_absolute > 1000000:  # If > 1M shares
+                shares_millions = shares_absolute / 1e6
+            else:
+                shares_millions = max(shares_absolute, 1)  # Default to 1 if 0
+            
+            # Return all financial metrics
             return {
                 "name": self.ticker,
                 "current_price": current_price,
-                # All revenue/debt/cash in MILLIONS from SEC
+                # All in MILLIONS
                 "revenue": get_val('Revenues') / 1e6 or get_val('RevenueFromContractWithCustomerExcludingCostReportedAmount') / 1e6,
                 "ebit": get_val('OperatingIncomeLoss') / 1e6,
                 "net_income": get_val('NetIncomeLoss') / 1e6,
@@ -104,7 +116,7 @@ class SECDataFetcher:
                 "cash": get_val('CashAndCashEquivalentsAtCarryingValue') / 1e6,
                 "interest_exp": get_val('InterestExpense') / 1e6,
                 "dividends": get_val('PaymentsOfDividends') / 1e6,
-                # SHARES in MILLIONS (this is the fix!)
+                # SHARES IN MILLIONS (this is the fix!)
                 "shares": shares_millions,
                 "tax_rate": 0.21,
                 "beta": 1.1
