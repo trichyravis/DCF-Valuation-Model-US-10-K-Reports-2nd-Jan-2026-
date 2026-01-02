@@ -3,6 +3,7 @@ import streamlit as st
 import requests
 import yfinance as yf
 import json
+import time
 
 
 class SECDataFetcher:
@@ -56,21 +57,15 @@ class SECDataFetcher:
                     return 0
             
             def get_shares_from_sec():
-                """
-                Try multiple strategies to fetch shares from SEC:
-                1. DEI EntityCommonStockSharesOutstanding (pure unit)
-                2. DEI EntityCommonStockSharesOutstanding (any unit)
-                3. us-gaap CommonStockSharesOutstanding
-                """
+                """Multiple strategies to fetch shares from SEC"""
                 try:
-                    # Strategy 1: Try DEI taxonomy
+                    # Strategy 1: Try DEI EntityCommonStockSharesOutstanding
                     dei_facts = facts.get('facts', {}).get('dei', {})
                     
-                    # Look for EntityCommonStockSharesOutstanding
                     if 'EntityCommonStockSharesOutstanding' in dei_facts:
                         ecsso = dei_facts['EntityCommonStockSharesOutstanding'].get('units', {})
                         
-                        # Try 'pure' unit first
+                        # Try 'pure' unit
                         if 'pure' in ecsso and ecsso['pure']:
                             val = sorted(ecsso['pure'], key=lambda x: x.get('end', ''))[-1].get('val', 0)
                             if val > 0:
@@ -94,52 +89,86 @@ class SECDataFetcher:
                                     return val
                     
                     return 0
-                except Exception as e:
-                    return 0
-            
-            def get_shares_from_yfinance():
-                """
-                Fallback: Get shares outstanding from yfinance
-                """
-                try:
-                    stock = yf.Ticker(self.ticker)
-                    info = stock.info
-                    
-                    # Try multiple share count fields
-                    shares = info.get('sharesOutstanding') or \
-                            info.get('floatShares') or \
-                            info.get('sharesFloat') or 0
-                    
-                    return shares if shares > 0 else 0
                 except:
                     return 0
             
-            # Get shares with fallback logic
+            def get_current_price_robust():
+                """
+                Multiple strategies to fetch current price:
+                1. yfinance info['currentPrice']
+                2. yfinance info['regularMarketPrice']
+                3. yfinance history last close
+                4. yfinance fast_info
+                5. Return 0 if all fail (don't error out)
+                """
+                try:
+                    stock = yf.Ticker(self.ticker)
+                    
+                    # Strategy 1: Try info fields
+                    info = stock.info
+                    if info:
+                        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
+                        if price and price > 0:
+                            return float(price)
+                    
+                    # Strategy 2: Try fast_info
+                    try:
+                        fast_info = stock.fast_info
+                        if fast_info:
+                            price = fast_info.get('lastPrice')
+                            if price and price > 0:
+                                return float(price)
+                    except:
+                        pass
+                    
+                    # Strategy 3: Try history - 5 days
+                    try:
+                        hist = stock.history(period="5d")
+                        if not hist.empty:
+                            close_price = hist['Close'].iloc[-1]
+                            if close_price > 0:
+                                return float(close_price)
+                    except:
+                        pass
+                    
+                    # Strategy 4: Try history - 1 month
+                    try:
+                        hist = stock.history(period="1mo")
+                        if not hist.empty:
+                            close_price = hist['Close'].iloc[-1]
+                            if close_price > 0:
+                                return float(close_price)
+                    except:
+                        pass
+                    
+                    # All strategies failed, return 0
+                    return 0
+                
+                except Exception as e:
+                    return 0
+            
+            # Get shares
             shares_absolute = get_shares_from_sec()
             
-            # If SEC fails, try yfinance
+            # Fallback to yfinance if SEC fails
             if shares_absolute == 0:
-                shares_absolute = get_shares_from_yfinance()
+                try:
+                    stock = yf.Ticker(self.ticker)
+                    info = stock.info
+                    shares_absolute = info.get('sharesOutstanding') or \
+                                    info.get('floatShares') or \
+                                    info.get('sharesFloat') or 0
+                except:
+                    pass
             
-            # Convert to millions
-            if shares_absolute > 1000000:  # More than 1M shares
+            # Convert shares to millions
+            if shares_absolute > 1000000:
                 shares_millions = shares_absolute / 1e6
             else:
-                shares_millions = shares_absolute if shares_absolute > 0 else 1  # Default to 1 if can't fetch
+                shares_millions = shares_absolute if shares_absolute > 0 else 1
             
-            # Step 5: Get current market price
-            current_price = 0
-            try:
-                stock = yf.Ticker(self.ticker)
-                info = stock.info
-                current_price = info.get('currentPrice') or info.get('regularMarketPrice') or 0
-                
-                if current_price == 0:
-                    hist = stock.history(period="1d")
-                    if not hist.empty:
-                        current_price = float(hist['Close'].iloc[-1])
-            except:
-                current_price = 0
+            # Get current price with robust fallback
+            current_price = get_current_price_robust()
             
             # Return all financial metrics
             return {
@@ -155,7 +184,7 @@ class SECDataFetcher:
                 "cash": get_val('CashAndCashEquivalentsAtCarryingValue') / 1e6,
                 "interest_exp": get_val('InterestExpense') / 1e6,
                 "dividends": get_val('PaymentsOfDividends') / 1e6,
-                # SHARES IN MILLIONS with fallback
+                # SHARES IN MILLIONS
                 "shares": shares_millions,
                 "tax_rate": 0.21,
                 "beta": 1.1
