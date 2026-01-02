@@ -15,7 +15,7 @@ def sidebar_component():
         }
         </style>
     """, unsafe_allow_html=True)
-
+    
     with st.sidebar:
         st.header("🏢 Target Selection")
         ticker = st.text_input("US Ticker (Audited 10-K Search)", value="GOOGL").upper()
@@ -31,4 +31,29 @@ def sidebar_component():
         st.markdown("---")
         run_val = st.button("📊 EXECUTE AUDITED DCF")
         
-    return ticker, growth_rate, wacc, t_growth, run_btn
+    return ticker, growth_rate, wacc, t_growth, run_val
+
+
+# ============================================================================
+# USAGE EXAMPLE
+# ============================================================================
+if __name__ == "__main__":
+    # Call the sidebar component
+    ticker, growth_rate, wacc, t_growth, run_val = sidebar_component()
+    
+    # Display the retrieved values
+    st.title("DCF Valuation Dashboard")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Ticker", ticker)
+    with col2:
+        st.metric("Growth Rate", f"{growth_rate*100:.1f}%")
+    with col3:
+        st.metric("WACC", f"{wacc*100:.1f}%")
+    with col4:
+        st.metric("Terminal Growth", f"{t_growth*100:.1f}%")
+    
+    if run_val:
+        st.success("✅ Valuation Model Executed Successfully!")
+        st.write(f"Running DCF analysis for {ticker}...")
