@@ -1,19 +1,55 @@
+# requirements.txt - Enhanced Dependencies
+# Mountain Path Valuation Terminal
+# Updated: January 2, 2026
 
-# --- Core Web Framework ---
-streamlit>=1.41.0  # Upgraded to fix Python 3.13 syntax warnings
+# === CORE DEPENDENCIES ===
+streamlit==1.31.1                  # Web app framework
+yfinance==0.2.35                   # Financial data API
+requests==2.31.0                   # HTTP requests
+pandas>=2.1.0                      # Data manipulation
+numpy>=1.26.0                      # Numerical computing
 
-# --- Financial Data & SEC Retrieval ---
-yfinance>=0.2.35
-requests>=2.31.0
+# === VISUALIZATION ===
+plotly>=5.18.0                     # Interactive charts
+matplotlib>=3.8.0                  # Static plotting
+seaborn>=0.13.0                    # Statistical visualization
 
-# --- Data Manipulation ---
-pandas>=2.2.0
-numpy>=1.26.0
+# === MATHEMATICAL & SCIENTIFIC ===
+scipy>=1.11.0                      # Scientific computing
+scikit-learn>=1.3.0                # Machine learning (for advanced features)
 
-# --- Visualizations & Math ---
-plotly>=5.18.0
-scipy>=1.11.0
+# === DATA VALIDATION ===
+pydantic>=2.0.0                    # Type validation & settings management
+pydantic-settings>=2.0.0           # Settings management
 
-# --- PDF Generation & Images ---
-fpdf2>=2.7.0
-Pillow>=10.0.0
+# === REPORTING & EXPORT ===
+fpdf2>=2.7.0                       # PDF generation
+Pillow>=10.0.0                     # Image processing
+openpyxl>=3.1.0                    # Excel file handling
+reportlab>=4.0.0                   # PDF toolkit (alternative to fpdf2)
+
+# === TESTING ===
+pytest>=7.4.0                      # Testing framework
+pytest-cov>=4.1.0                  # Code coverage
+pytest-mock>=3.12.0                # Mocking utilities
+pytest-asyncio>=0.21.0             # Async testing
+
+# === CODE QUALITY ===
+black>=23.12.0                     # Code formatter
+flake8>=6.1.0                      # Linting
+mypy>=1.7.0                        # Type checking
+isort>=5.13.0                      # Import sorting
+
+# === LOGGING & MONITORING ===
+python-logging-loki>=0.3.2         # Grafana Loki logging (optional)
+structlog>=23.2.0                  # Structured logging
+
+# === DEVELOPMENT ===
+pre-commit>=3.5.0                  # Git hooks
+python-dotenv>=1.0.0               # Environment variable management
+
+# === OPTIONAL: ADVANCED FEATURES ===
+# Uncomment if needed for advanced functionality
+# prophet>=1.1.0                   # Time series forecasting
+# tensorflow>=2.14.0               # Deep learning (if using neural networks)
+# transformers>=4.35.0             # NLP models (if text analysis needed)
