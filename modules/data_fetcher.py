@@ -15,18 +15,16 @@ class SECDataFetcher:
         }
 
     def get_valuation_inputs(self):
-        """
-        Wrapper to call the cached function. 
-        We pass 'self.ticker' as a string to ensure the cache works correctly.
-        """
-        return self._fetch_ticker_data(self.ticker, self.headers)
+        # We pass self.ticker as the primary 'hash key'
+        # We underscore _self and _headers so Streamlit ignores them for hashing
+        return self._fetch_ticker_data(self.ticker, self, self.headers)
 
     @st.cache_data(ttl=3600)
-    def _fetch_ticker_data(ticker_str, headers):
+    def _fetch_ticker_data(ticker_str, _self, _headers):
         """
-        The actual cached function. 
-        By making 'ticker_str' an argument, Streamlit re-runs this 
-        whenever the ticker changes.
+        Streamlit hashes 'ticker_str' to decide if it should rerun.
+        The underscore in '_self' and '_headers' tells Streamlit:
+        'Don't try to hash these; just pass them through.'
         """
         try:
             # 1. Map Ticker to CIK
@@ -47,7 +45,8 @@ class SECDataFetcher:
 
             # 2. Fetch Audited Facts
             facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-            facts_res = requests.get(facts_url, headers=headers)
+            # Use the ignored _headers parameter
+            facts_res = requests.get(facts_url, headers=_headers)
             facts = facts_res.json()
             
             def get_val(tag, taxonomy='us-gaap'):
