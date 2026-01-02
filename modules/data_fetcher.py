@@ -55,52 +55,91 @@ class SECDataFetcher:
                 except:
                     return 0
             
-            def get_shares():
-                """Get shares from DEI - returns in actual count, we'll convert to millions"""
+            def get_shares_from_sec():
+                """
+                Try multiple strategies to fetch shares from SEC:
+                1. DEI EntityCommonStockSharesOutstanding (pure unit)
+                2. DEI EntityCommonStockSharesOutstanding (any unit)
+                3. us-gaap CommonStockSharesOutstanding
+                """
                 try:
-                    dei_data = facts.get('facts', {}).get('dei', {}).get('EntityCommonStockSharesOutstanding', {}).get('units', {})
+                    # Strategy 1: Try DEI taxonomy
+                    dei_facts = facts.get('facts', {}).get('dei', {})
                     
-                    # Try 'pure' unit first
-                    shares_val = dei_data.get('pure', [])
-                    if shares_val:
-                        val = sorted(shares_val, key=lambda x: x.get('end', ''))[-1].get('val', 0)
-                        return val if val > 0 else 0
-                    
-                    # Try other units
-                    for unit_type, unit_data in dei_data.items():
-                        if unit_data:
-                            val = sorted(unit_data, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                    # Look for EntityCommonStockSharesOutstanding
+                    if 'EntityCommonStockSharesOutstanding' in dei_facts:
+                        ecsso = dei_facts['EntityCommonStockSharesOutstanding'].get('units', {})
+                        
+                        # Try 'pure' unit first
+                        if 'pure' in ecsso and ecsso['pure']:
+                            val = sorted(ecsso['pure'], key=lambda x: x.get('end', ''))[-1].get('val', 0)
                             if val > 0:
                                 return val
+                        
+                        # Try any unit
+                        for unit_type, unit_data in ecsso.items():
+                            if unit_data:
+                                val = sorted(unit_data, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                                if val > 0:
+                                    return val
+                    
+                    # Strategy 2: Try us-gaap CommonStockSharesOutstanding
+                    us_gaap = facts.get('facts', {}).get('us-gaap', {})
+                    if 'CommonStockSharesOutstanding' in us_gaap:
+                        csso = us_gaap['CommonStockSharesOutstanding'].get('units', {})
+                        for unit_type, unit_data in csso.items():
+                            if unit_data:
+                                val = sorted(unit_data, key=lambda x: x.get('end', ''))[-1].get('val', 0)
+                                if val > 0:
+                                    return val
                     
                     return 0
+                except Exception as e:
+                    return 0
+            
+            def get_shares_from_yfinance():
+                """
+                Fallback: Get shares outstanding from yfinance
+                """
+                try:
+                    stock = yf.Ticker(self.ticker)
+                    info = stock.info
+                    
+                    # Try multiple share count fields
+                    shares = info.get('sharesOutstanding') or \
+                            info.get('floatShares') or \
+                            info.get('sharesFloat') or 0
+                    
+                    return shares if shares > 0 else 0
                 except:
                     return 0
+            
+            # Get shares with fallback logic
+            shares_absolute = get_shares_from_sec()
+            
+            # If SEC fails, try yfinance
+            if shares_absolute == 0:
+                shares_absolute = get_shares_from_yfinance()
+            
+            # Convert to millions
+            if shares_absolute > 1000000:  # More than 1M shares
+                shares_millions = shares_absolute / 1e6
+            else:
+                shares_millions = shares_absolute if shares_absolute > 0 else 1  # Default to 1 if can't fetch
             
             # Step 5: Get current market price
             current_price = 0
             try:
-                # Try yfinance with longer timeout
                 stock = yf.Ticker(self.ticker)
                 info = stock.info
                 current_price = info.get('currentPrice') or info.get('regularMarketPrice') or 0
                 
-                # Fallback to history if price not in info
                 if current_price == 0:
                     hist = stock.history(period="1d")
                     if not hist.empty:
                         current_price = float(hist['Close'].iloc[-1])
             except:
                 current_price = 0
-            
-            # Step 6: Get and convert shares
-            shares_absolute = get_shares()  # In actual shares
-            
-            # Convert to millions
-            if shares_absolute > 1000000:  # If > 1M shares
-                shares_millions = shares_absolute / 1e6
-            else:
-                shares_millions = max(shares_absolute, 1)  # Default to 1 if 0
             
             # Return all financial metrics
             return {
@@ -116,7 +155,7 @@ class SECDataFetcher:
                 "cash": get_val('CashAndCashEquivalentsAtCarryingValue') / 1e6,
                 "interest_exp": get_val('InterestExpense') / 1e6,
                 "dividends": get_val('PaymentsOfDividends') / 1e6,
-                # SHARES IN MILLIONS (this is the fix!)
+                # SHARES IN MILLIONS with fallback
                 "shares": shares_millions,
                 "tax_rate": 0.21,
                 "beta": 1.1
