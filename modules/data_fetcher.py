@@ -8,6 +8,7 @@ import time
 class SECDataFetcher:
     def __init__(self, ticker):
         self.ticker = ticker.upper()
+        # Headers are a dictionary (unhashable)
         self.headers = {
             'User-Agent': 'Mountain Path Valuation research@mountainpath.edu',
             'Accept-Encoding': 'gzip, deflate',
@@ -15,21 +16,24 @@ class SECDataFetcher:
         }
 
     def get_valuation_inputs(self):
-        # We pass self.ticker as the primary 'hash key'
-        # We underscore _self and _headers so Streamlit ignores them for hashing
+        """
+        Public method to call the cached logic.
+        We pass 'self.ticker' as the primary hash key.
+        We pass 'self' and 'self.headers' with underscores to bypass hashing.
+        """
         return self._fetch_ticker_data(self.ticker, self, self.headers)
 
     @st.cache_data(ttl=3600)
     def _fetch_ticker_data(ticker_str, _self, _headers):
         """
-        Streamlit hashes 'ticker_str' to decide if it should rerun.
-        The underscore in '_self' and '_headers' tells Streamlit:
-        'Don't try to hash these; just pass them through.'
+        The underscores in '_self' and '_headers' are the fix.
+        Streamlit will now only use 'ticker_str' to decide whether to 
+        load from cache or rerun the fetch.
         """
         try:
             # 1. Map Ticker to CIK
             ticker_map_url = "https://www.sec.gov/files/company_tickers.json"
-            map_headers = {'User-Agent': 'MPV/1.0 research@mountainpath.edu'}
+            map_headers = {'User-Agent': 'MPV research@mountainpath.edu'}
             response = requests.get(ticker_map_url, headers=map_headers)
             
             if not response.text.strip(): return None
@@ -45,7 +49,7 @@ class SECDataFetcher:
 
             # 2. Fetch Audited Facts
             facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-            # Use the ignored _headers parameter
+            # Use the ignored _headers parameter for the actual request
             facts_res = requests.get(facts_url, headers=_headers)
             facts = facts_res.json()
             
