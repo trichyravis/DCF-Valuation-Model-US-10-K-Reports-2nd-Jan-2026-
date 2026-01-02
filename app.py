@@ -103,9 +103,9 @@ def render_valuation_analysis(ticker: str, growth_rate: float,
             st.metric("Cash ($M)", f"${inputs['cash']:,.0f}")
         
         with col3:
-            st.metric("Shares (M)", f"{inputs['shares']/1e6:,.0f}")
+            st.metric("Shares (M)", f"{inputs['shares']:,.0f}")
             st.metric("Current Price", f"${inputs['current_price']:.2f}")
-            st.metric("Market Cap ($M)", f"${(inputs['current_price'] * inputs['shares'] / 1e6):,.0f}")
+            st.metric("Market Cap ($M)", f"${(inputs['current_price'] * inputs['shares']):,.0f}")
     
     # === RUN VALUATION ===
     market_data = {
