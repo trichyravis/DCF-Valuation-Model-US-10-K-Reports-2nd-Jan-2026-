@@ -8,39 +8,46 @@ import time
 class SECDataFetcher:
     def __init__(self, ticker):
         self.ticker = ticker.upper()
-        # SEC MANDATORY: Professional User-Agent with contact email
         self.headers = {
             'User-Agent': 'Mountain Path Valuation research@mountainpath.edu',
             'Accept-Encoding': 'gzip, deflate',
             'Host': 'data.sec.gov'
         }
 
+    def get_valuation_inputs(self):
+        """
+        Wrapper to call the cached function. 
+        We pass 'self.ticker' as a string to ensure the cache works correctly.
+        """
+        return self._fetch_ticker_data(self.ticker, self.headers)
+
     @st.cache_data(ttl=3600)
-    def get_valuation_inputs(_self):
+    def _fetch_ticker_data(ticker_str, headers):
+        """
+        The actual cached function. 
+        By making 'ticker_str' an argument, Streamlit re-runs this 
+        whenever the ticker changes.
+        """
         try:
-            # Step 1: Map Ticker to CIK
+            # 1. Map Ticker to CIK
             ticker_map_url = "https://www.sec.gov/files/company_tickers.json"
-            map_headers = {'User-Agent': 'MPV research@mountainpath.edu'}
+            map_headers = {'User-Agent': 'MPV/1.0 research@mountainpath.edu'}
             response = requests.get(ticker_map_url, headers=map_headers)
             
             if not response.text.strip(): return None
             ticker_map = response.json()
             
-            # --- FIXING THE NAMEERROR: Initialize cik before use ---
             cik = None 
             for item in ticker_map.values():
-                if item['ticker'] == _self.ticker:
+                if item['ticker'] == ticker_str:
                     cik = str(item['cik_str']).zfill(10)
                     break
             
-            if not cik:
-                st.error(f"Ticker {_self.ticker} not found in SEC database.")
-                return None
+            if not cik: return None
 
-            # Step 2: Fetch Audited Facts
+            # 2. Fetch Audited Facts
             facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-            facts_res = requests.get(facts_url, headers=_self.headers)
-            if not facts_res.text.strip(): return None
+            facts_res = requests.get(facts_url, headers=headers)
             facts = facts_res.json()
             
             def get_val(tag, taxonomy='us-gaap'):
@@ -49,16 +56,13 @@ class SECDataFetcher:
                     return sorted(data, key=lambda x: x['end'])[-1]['val']
                 except: return 0
 
-            # Step 3: Fetch Market Price
-            stock = yf.Ticker(_self.ticker)
-            try:
-                current_price = stock.fast_info['last_price']
-            except:
-                hist = stock.history(period="1d")
-                current_price = hist['Close'].iloc[-1] if not hist.empty else 0
+            # 3. Market Price
+            stock = yf.Ticker(ticker_str)
+            hist = stock.history(period="1d")
+            current_price = hist['Close'].iloc[-1] if not hist.empty else 0
 
             return {
-                "name": _self.ticker,
+                "name": ticker_str,
                 "current_price": current_price,
                 "revenue": get_val('Revenues') / 1e6 or get_val('RevenueFromContractWithCustomerExcludingCostReportedAmount') / 1e6,
                 "ebit": get_val('OperatingIncomeLoss') / 1e6,
